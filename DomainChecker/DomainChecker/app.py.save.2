@@ -1,0 +1,68 @@
+
+from bottle import Bottle, request, template, run, redirect
+import domainChecker  # Assurez-vous que domainChecker est accessible depuis ce script
+import urllib.parse
+
+print("Demarrage appli")
+app = Bottle()
+
+@app.route('/analyze', method='GET')
+def get_analysis():
+    domain = domainChecker.validate_domain(request.query.domain)
+    if not domain:
+        return "Les champs domaine et sélecteur sont requis."
+
+    dns_records = dnsExtractor.extract_dns_records(domain)
+    results = domainChecker.main(domain)
+    # Construction de l'URL de redirection avec les résultats
+    params = {
+        'results_spf': results.get('SPF', 'Non testé'),
+        'results_dkim': results.get('DKIM', 'Non testé'),
+        'results_dmarc': results.get('DMARC', 'Non testé'),
+        'results_blacklist': results.get('Blacklist', 'Non testé'),
+    }
+    results_params = urllib.parse.urlencode(params)
+    redirect_url = f"https://growth-agence.webflow.io/domain-checker-results?{results_params}"
+    return redirect(redirect_url)
+
+application = app
+'''
+
+from bottle import Bottle, request, template, run, redirect
+import dnsExtractor  # Importez le nouveau script
+import domainChecker
+import urllib.parse
+import logging
+
+# Configuration basique du logging
+logging.basicConfig(level=logging.INFO)
+
+print("Démarrage de l'application")
+app = Bottle()
+
+@app.route('/analyze', method='GET')
+def get_analysis():
+    domain = domainChecker.validate_domain(request.query.domain)
+    # Utilisez la fonction extract_dns_records() du nouveau script pour obtenir les enregistrements DNS
+    dns_records_json = dnsExtractor.extract_dns_records(domain)
+    if dns_records_json:
+
+        params = {
+            'results_spf': request.query.results_spf,
+            'results_dkim': request.query.results_dkim,
+            'results_dmarc': request.query.results_dmarc,
+            'results_blacklist': request.query.results_blacklist,
+        }
+        logging.info(f"Params: {params}")
+        logging.info(f"DNS Records JSON: {dns_records_json}")
+        results_params = urllib.parse.urlencode(params)
+        dns_records_param = f"dns_records={urllib.parse.quote(dns_records_json)}"
+        redirect_url = f"https://growth-agence.webflow.io/domain-checker-results?{results_params}&{dns_records_param}"
+        return redirect(redirect_url)
+
+    else:
+        return "Échec de la récupération des enregistrements DNS."
+
+application = app
+
+'''

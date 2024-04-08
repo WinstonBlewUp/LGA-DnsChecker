@@ -1,0 +1,38 @@
+from bottle import Bottle, request, template, run
+import domainChecker  # Assurez-vous que domainChecker est accessible depuis ce script
+
+print("Demarrage appli")
+app = Bottle()
+
+@app.route('/')  # Utilisez '/form' ou une autre route de votre choix pour afficher le formulaire
+def show_form():
+    return template('form_template', template_lookup=['/opt/bitnami/apache/htdocs/DomainChecker/DomainChecker/Views'])
+
+zdef handle_form_submission():
+    selector = request.forms.get('selector')
+    
+    # À ce stade, `domain` et `selector` contiennent les valeurs soumises.
+    # Vous pouvez maintenant les traiter comme vous le souhaitez.
+    # Par exemple, imprimer dans la console pour le débogage :
+    print(f"Domaine reçu: {domain}, Sélecteur reçu: {selector}")
+
+    # Assurez-vous de renvoyer une réponse appropriée à Webflow.
+    return "Soumission de formulaire reçue avec succès"
+'''
+
+@app.route('/analyze', method='GET')  # Cette route est utilisée pour traiter le formulaire et afficher les résultats
+def get_analysis():
+    domain = request.query.domain
+    selector = request.query.selector
+    if not domain or not selector:
+        return "Les champs domaine et sélecteur sont requis."
+    
+    # Ici, vous appelleriez domainChecker.main(domain, selector) pour obtenir les résultats
+    # Simulons des résultats pour l'exemple
+    results = domainChecker.main(domain, selector)
+    
+    # Affiche les résultats à l'aide d'un template
+    return template('results_template', domain=domain, selector=selector, results=results, template_lookup=['/opt/bitnami/apache/htdocs/DomainChecker/DomainChecker/Views'])
+
+
+application = app

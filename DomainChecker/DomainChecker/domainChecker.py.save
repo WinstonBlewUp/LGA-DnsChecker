@@ -1,0 +1,138 @@
+import dns.resolver
+import diagnosticExporter
+import os
+import json
+import urllib.parse
+import re
+
+EXPORT_FOLDER = "/opt/bitnami/apache/htdocs/DomainChecker/DomainChecker/Export"
+
+def validate_domain(input_value):
+    try:
+        # Définir une expression régulière pour extraire le domaine principal
+        domain_pattern = r"(?:https?://)?(?:www\.)?([^/]+)"
+        # Trouver le domaine principal dans l'URL
+        match = re.match(domain_pattern, input_value)
+        if match:
+            domain = match.group(1)
+            return domain
+        else:
+            raise ValueError("L'URL ne contient pas de domaine valide.")
+    except Exception as e:
+        raise ValueError(f"Erreur lors de la validation du domaine : {e}")
+
+def get_highest_iteration(domain):
+    highest_iteration = 0
+    for filename in os.listdir(EXPORT_FOLDER):
+        if filename.startswith(domain):
+            iteration_str = filename.split('_')[-1].split('.')[0]
+            try:
+                iteration = int(iteration_str)
+                highest_iteration = max(highest_iteration, iteration)
+            except ValueError:
+                continue
+    return highest_iteration
+
+def evaluate_spf(domain):
+    try:
+        answers = dns.resolver.resolve(domain, 'TXT')
+        for rdata in answers:
+            if rdata.strings[0].startswith(b"v=spf1"):
+                spf_record = rdata.strings[0].decode()
+                mechanism_list = spf_record.split()[1:]
+                specific_mechanisms = [mech for mech in mechanism_list if mech.startswith(('a', 'mx', 'ip4', 'ip6', 'include', 'all', '-all', '~all', '?all'))]
+                score = min(len(specific_mechanisms), 5)
+                return f"{score}/5"
+        return "0/5"
+    except Exception:
+        return "Erreur"
+
+COMMON_DKIM_SELECTORS = ["google", "default", "s1024", "s2048", "s4096"]
+def evaluate_dkim(domain):
+    for selector in COMMON_DKIM_SELECTORS:
+        dkim_record = f"{selector}._domainkey.{domain}"
+        try:
+            dns.resolver.resolve(dkim_record, 'TXT')
+            return "Pass"
+        except Exception:
+            continue
+    return "Fail"
+
+def evaluate_dmarc(domain):
+    dmarc_record = f"_dmarc.{domain}"
+    try:
+        answers = dns.resolver.resolve(dmarc_record, 'TXT')
+        for rdata in answers:
+            if rdata.strings[0].startswith(b"v=DMARC1"):
+                policies = [part.split('=') for part in rdata.strings[0].decode().split(';') if part.strip()]
+                policy_dict = {key: value for key, value in policies if key == 'p'}
+                policy = policy_dict.get('p', 'none')
+                return policy
+        return "none"
+    except Exception:
+        return "none"
+
+def check_blacklist(domain):
+    blacklist_services = ["zen.spamhaus.org"]
+    listed_in = "none"
+    for service in blacklist_services:
+        try:
+            query = '.'.join(reversed(domain.split('.'))) + '.' + service
+            dns.resolver.resolve(query, 'A')
+            listed_in = service
+            break
+        except dns.resolver.NXDOMAIN:
+            continue
+        except Exception:
+            continue
+    return listed_in
+
+def evaluate_bimi(domain):
+    try:
+        bimi_record_name = f"default._bimi.{domain}"
+        answers = dns.resolver.resolve(bimi_record_name, 'TXT')
+        for rdata in answers:
+            # Supposons que le record BIMI peut être une simple vérification de présence ici
+            return "Présent"
+    except dns.resolver.NoAnswer:
+        return "Absent"
+    except Exception as e:
+        print(f"Erreur lors de l'extraction de l'enregistrement BIMI : {e}")
+        return "Erreur"
+
+
+def main(domain):
+    iteration_number = get_highest_iteration(domain) + 1
+
+    spf_result = evaluate_spf(domain)
+    dkim_result = evaluate_dkim(domain)
+    dmarc_result = evaluate_dmarc(domain)
+    blacklist_result = check_blacklist(domain)
+    bimi_result = evaluate_bimi(domain)
+
+    results = {
+        "SPF": spf_result,
+        "DKIM": dkim_result,
+        "DMARC": dmarc_result,
+        "Blacklist": blacklist_result,
+        "BIMI":bimi_result,
+    }
+
+    filename = f"{domain}_{iteration_number}.json"
+    filepath = os.path.join(EXPORT_FOLDER, filename)
+    with open(filepath, 'w') as file:
+        json.dump(results, file, indent=4)
+
+    return results
+
+if __name__ == "__main__":
+    try:
+        selector = COMMON_DKIM_SELECTORS[0]
+        input_value = input("Veuillez entrer le nom de domaine à évaluer : ")
+        domain = validate_domain(input_value)  # Valide le format du domaine
+        print(f"Domaine extrait : {domain}")
+        results = main(domain)  # Appelle la fonction main une seule fois
+        print(json.dumps(results, indent=4))  # Imprime les résultats une seule fois
+    except ValueError as e:  # Capture et traite les erreurs de validation de domaine
+        print(e)
+
