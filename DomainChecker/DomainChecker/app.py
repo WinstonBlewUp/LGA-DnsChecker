@@ -41,7 +41,7 @@ def get_analysis():
         return "Le domaine fourni n'est pas valide."
     
     results = domainChecker.main(validated_domain)
-    dns_records = dnsExtractor.extract_dns_records(validated_domain)
+    differences = dnsExtractor.compare_records(validated_domain)
 
     params = {
         'domain': validated_domain,
@@ -49,11 +49,16 @@ def get_analysis():
         'results_dkim': results.get('DKIM', 'Non testé'),
         'results_dmarc': results.get('DMARC', 'Non testé'),
         'results_blacklist': results.get('Blacklist', 'Non testé'),
-        'results_bimi': results.get('BIMI', 'Non testé'),
-        'record_spf': dns_records.get('SPF', 'Non trouvé'),
-        'record_dkim': dns_records.get('DKIM', 'Non trouvé'),
-        'record_dmarc': dns_records.get('DMARC', 'Non trouvé'),
-        'record_bimi': dns_records.get('BIMI', 'Non trouvé'),
+
+        'diff_record_spf': differences['SPF']['record'],
+        'diff_record_dkim': differences['DKIM']['record'],  
+        'diff_record_dmarc': differences['DMARC']['record'],
+          
+        'diff_record_bimi': differences['BIMI']['reference'],
+        'diff_reference_spf': differences['SPF']['reference'],
+        'diff_reference_dkim': differences['DKIM']['reference'],  
+        'diff_reference_dmarc': differences['DMARC']['reference'],  
+        'diff_reference_bimi': differences['BIMI']['reference'],
     }
     results_params = urllib.parse.urlencode(params)
     redirect_url = f"https://growth-agence.com/domain-checker-results?{results_params}"
