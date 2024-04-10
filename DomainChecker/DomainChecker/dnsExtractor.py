@@ -71,15 +71,18 @@ def extract_dns_records(domain):
 
 def clean_spf(record):
     cleaned_parts = []
+    include_found = False  
     for part in record.split():
         if part.lower().strip().startswith("include:"):
-            cleaned_parts.append("include:")
+            if not include_found:  
+                cleaned_parts.append("include:")
+                include_found = True  # Marquer qu'un "include:" a été trouvé
         else:
             cleaned_parts.append(part.strip())
 
     spf_clean = " ".join(cleaned_parts)
-    
     return spf_clean
+
 
 def clean_dkim(record):
     cleaned_parts = []
@@ -96,14 +99,18 @@ def clean_dkim(record):
 def clean_dmarc(record):
     cleaned_parts = []
     for part in record.split(";"):
-        if part.lower().strip().startswith("rua=") or part.lower().strip().startswith("ruf="):
-            cleaned_parts.append(part.split("=")[0] + "=")  # Conserver l'instruction sans son contenu
+        # Ignorer les parties commençant par "pct="
+        if part.lower().strip().startswith("pct="):
+            continue
+        elif part.lower().strip().startswith("rua=") or part.lower().strip().startswith("ruf="):
+            cleaned_parts.append(part.split("=")[0] + "=")
         else:
             cleaned_parts.append(part.strip())
-    
+
     dmarc_clean = ";".join(cleaned_parts)
     
     return dmarc_clean
+
 
 def clean_bimi(record):
     cleaned_parts = []
@@ -140,7 +147,8 @@ def compare_records(domain):
         clean_dmarc(dmarc_ref),
         clean_bimi(bimi_ref),
     ]
-
+    print(record_clean)
+    
     def find_differences(str1, str2):
     
         if "v=spf1" in str1 or "v=spf1" in str2:

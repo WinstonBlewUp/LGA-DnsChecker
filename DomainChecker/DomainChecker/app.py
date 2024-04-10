@@ -53,8 +53,8 @@ def get_analysis():
         'diff_record_spf': differences['SPF']['record'],
         'diff_record_dkim': differences['DKIM']['record'],  
         'diff_record_dmarc': differences['DMARC']['record'],
-          
         'diff_record_bimi': differences['BIMI']['reference'],
+        
         'diff_reference_spf': differences['SPF']['reference'],
         'diff_reference_dkim': differences['DKIM']['reference'],  
         'diff_reference_dmarc': differences['DMARC']['reference'],  
