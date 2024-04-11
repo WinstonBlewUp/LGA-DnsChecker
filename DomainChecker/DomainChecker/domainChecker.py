@@ -5,7 +5,7 @@ import re
 from urllib.parse import urlparse
 import requests
 
-EXPORT_FOLDER = "/opt/bitnami/apache/htdocs/DomainChecker/DomainChecker/Export"
+EXPORT_FOLDER = "Export"#Chemin de prod : "/opt/bitnami/apache/htdocs/DomainChecker/DomainChecker/Export" 
 
 def validate_domain(input_value):
     parsed_url = urlparse(input_value)
@@ -45,24 +45,66 @@ def evaluate_spf(domain):
         for rdata in answers:
             if rdata.strings[0].startswith(b"v=spf1"):
                 spf_record = rdata.strings[0].decode()
-                mechanism_list = spf_record.split()[1:]
-                specific_mechanisms = [mech for mech in mechanism_list if mech.startswith(('a', 'mx', 'ip4', 'ip6', 'include', 'all', '-all', '~all', '?all'))]
-                score = min(len(specific_mechanisms), 5)
-                return f"{score}/5"
+                mechanism_list = spf_record.split()[1:]  
+                
+                has_specific_mechanisms = any(mech for mech in mechanism_list if mech.startswith(('a', 'mx', 'ip4', 'ip6', 'include')))
+                
+               
+                all_directive = next((mech for mech in mechanism_list if mech.endswith('all')), None)
+                
+                if has_specific_mechanisms:
+                    base_score = 1  # Accorder 1/5 pour la présence de mécanismes spécifiques
+                    if all_directive == "~all":
+                        return f"{base_score + 4}/5"  # ~all est la meilleure pratique
+                    elif all_directive == "-all":
+                        return f"{base_score + 3}/5"  # -all est sécurisé mais peut affecter la délivrabilité
+                    elif all_directive == "?all":
+                        return f"{base_score + 1}/5"  # ?all est neutre
+                    elif all_directive == "+all":
+                        return f"{base_score}/5"  # +all est trop permissif, conserver la note de base
+                    else:
+                        # Si aucun "all" ou un autre mécanisme non standard est utilisé
+                        return f"{base_score}/5"
+                else:
+                    return "0/5"         
         return "0/5"
-    except Exception:
-        return "Erreur"
+    except Exception as e:
+        return f"Erreur: {str(e)}"
 
-COMMON_DKIM_SELECTORS = ["google", "default", "s1024", "s2048", "s4096"]
+        
+COMMON_DKIM_SELECTORS = [
+    "google", "default", "s1024", "s2048", "s4096", "mail", "smtp", "postfix", "sendmail", "exim",
+    "domainkey", "dkim", "key1", "selector1", "selector2", "k1", "mailjet", "mandrill", "ses", "sendgrid",
+    "smtpapi", "zoho", "outlook", "ms", "office365", "beta", "domk", "ei", "smtpout", "sm", "authsmtp",
+    "alpha", "mesmtp", "cm", "prod", "pm", "gamma", "dkrnt", "dkimrnt", "private", "gmmailerd", "pmta",
+    "x", "selector", "qcdkim", "postfix", "mikd", "main", "m", "dk20050327", "delta", "yibm", "wesmail",
+    "test", "stigmate", "squaremail", "sitemail", "sasl", "sailthru", "responsys", "publickey", "proddkim",
+    "mail-in", "mailrelay", "mail-dkim", "mailo", "lists", "iweb", "iport", "hubris", "googleapps", "gears",
+    "exim4u", "exim", "et", "dyn", "duh", "dksel", "dkimmail", "corp", "centralsmtp", "ca", "bfi", "auth", "allselector", "zendesk1"
+]
+
+# Ajout de sélecteurs dynamiques
+for i in range(1, 21):
+    COMMON_DKIM_SELECTORS += [f"key{i}", f"yesmail{i}", f"selector{i}", f"m{i}"]
+
+# Élimination des doublons potentiels
+COMMON_DKIM_SELECTORS = list(set(COMMON_DKIM_SELECTORS))
+
 def evaluate_dkim(domain):
     for selector in COMMON_DKIM_SELECTORS:
         dkim_record = f"{selector}._domainkey.{domain}"
         try:
+            print(dkim_record)
             dns.resolver.resolve(dkim_record, 'TXT')
-            return "Pass"
-        except Exception:
-            continue
-    return "Fail"
+            return "Pass", dkim_record  # Retourne "Pass" dès qu'un enregistrement valide est trouvé
+        except dns.resolver.NoAnswer:
+            continue  # Passe au sélecteur suivant s'il n'y a pas de réponse
+        except dns.resolver.NXDOMAIN:
+            continue  # Passe si le domaine n'existe pas
+        except Exception as e:
+            print(f"Erreur inattendue pour le sélecteur {selector}: {e}")  # Pour le débogage
+    return "Fail"  # Retourne "Fail" si aucun enregistrement valide n'a été trouvé pour tous les sélecteurs
+
 
 def evaluate_dmarc(domain):
     dmarc_record = f"_dmarc.{domain}"
@@ -95,7 +137,8 @@ def check_blacklist(domain):
     return listed_in
 
 def evaluate_bimi(domain):
-    score = 0  # Initialisation du score
+    score = 0  
+    status = "Succès"
 
     try:
         answers = dns.resolver.resolve(f"default._bimi.{domain}", 'TXT')
@@ -114,11 +157,11 @@ def evaluate_bimi(domain):
 
                 break
     except dns.resolver.NoAnswer:
-        print(f"Aucun enregistrement BIMI trouvé pour {domain}.")
+        status = f"Aucun enregistrement BIMI trouvé pour {domain}: {e}"
     except Exception as e:
-        print(f"Erreur lors de la recherche de l'enregistrement BIMI pour {domain}: {e}")
-
-    return f"{score}/2"
+        status = f"Erreur lors de la recherche de l'enregistrement BIMI pour {domain}: {e}"
+        
+    return f"{score}/2", status
 
 def safe_file_write(domain, iteration_number, data):
     safe_domain = re.sub(r"[^a-zA-Z0-9.-]", "", domain)
@@ -133,13 +176,16 @@ def safe_file_write(domain, iteration_number, data):
 
 def main(domain):
     iteration_number = get_highest_iteration(domain) + 1
+    
+    dkim_status, dkim_record = evaluate_dkim(domain)
+    bimi_score, bimi_status  = evaluate_bimi(domain)
 
     spf_result = evaluate_spf(domain)
-    dkim_result = evaluate_dkim(domain)
+    dkim_result = dkim_status
     dmarc_result = evaluate_dmarc(domain)
     blacklist_result = check_blacklist(domain)
-    bimi_score = evaluate_bimi(domain)
-
+    
+    print(dkim_result)
     results = {
         "SPF": spf_result,
         "DKIM": dkim_result,

@@ -42,6 +42,7 @@ def get_analysis():
     
     results = domainChecker.main(validated_domain)
     differences = dnsExtractor.compare_records(validated_domain)
+    bimi_score, bimi_status = domainChecker.evaluate_bimi(domain)
 
     params = {
         'domain': validated_domain,
@@ -49,12 +50,14 @@ def get_analysis():
         'results_dkim': results.get('DKIM', 'Non testé'),
         'results_dmarc': results.get('DMARC', 'Non testé'),
         'results_blacklist': results.get('Blacklist', 'Non testé'),
+        'results_bimi': results.get('BIMI', "Non testé"),
+        'status_bimi': bimi_status,
 
         'diff_record_spf': differences['SPF']['record'],
         'diff_record_dkim': differences['DKIM']['record'],  
         'diff_record_dmarc': differences['DMARC']['record'],
+          
         'diff_record_bimi': differences['BIMI']['reference'],
-        
         'diff_reference_spf': differences['SPF']['reference'],
         'diff_reference_dkim': differences['DKIM']['reference'],  
         'diff_reference_dmarc': differences['DMARC']['reference'],  

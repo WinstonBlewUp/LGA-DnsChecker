@@ -1,5 +1,6 @@
 import dns.resolver
 import json
+from domainChecker import evaluate_dkim
 import domainChecker
 import urllib.parse
 
@@ -14,22 +15,23 @@ def get_spf_record(domain):
         print(f"Erreur lors de l'extraction de l'enregistrement SPF : {e}")
     return "Non trouvé"
 
-COMMON_DKIM_SELECTORS = ["google", "default", "s1024", "s2048", "s4096"]
-
 def get_dkim_record(domain):
-    for selector in COMMON_DKIM_SELECTORS:
-        dkim_record_name = f"{selector}._domainkey.{domain}"
+    status, dkim_record_name = evaluate_dkim(domain)
+    if status == "Pass":
         try:
+            # Interroger le DNS pour obtenir l'enregistrement DKIM
             answers = dns.resolver.resolve(dkim_record_name, 'TXT')
             for rdata in answers:
-                dkim_record = ''.join(part.decode('utf-8') for part in rdata.strings)
-                return dkim_record
-        except dns.resolver.NoAnswer:
-            continue
+                # Concaténation et décodage des parties de l'enregistrement TXT
+                dkim_record_content = ''.join(part.decode('utf-8') for part in rdata.strings)
+                print(f"Enregistrement DKIM trouvé : {dkim_record_content}")
+                return dkim_record_content
         except Exception as e:
-            print(f"Erreur lors de la recherche de l'enregistrement DKIM avec le sélecteur {selector}: {e}")
-            continue
-    return "Non trouvé"  # Aucun enregistrement DKIM trouvé pour les sélecteurs testés
+            print(f"Erreur lors de la récupération de l'enregistrement DKIM pour {dkim_record_name}: {e}")
+            return None
+    else:
+        print("Aucun enregistrement DKIM valide trouvé")
+        return None
 
 def get_dmarc_record(domain):
     try:
@@ -50,7 +52,8 @@ def get_bimi_record(domain):
             bimi_record = ''.join(part.decode('utf-8') for part in rdata.strings)
             # Vérification de la présence de la version BIMI dans l'enregistrement
             if 'v=BIMI1;' in bimi_record:
-                return bimi_record  # Retourne l'enregistrement si valide
+                print(bimi_record)
+                return bimi_record 
             else:
                 return "Enregistrement trouvé, mais non valide"
     except dns.resolver.NoAnswer:
