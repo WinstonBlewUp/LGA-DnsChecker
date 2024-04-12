@@ -1,0 +1,7 @@
+{
+    "SPF": "4/5",
+    "DKIM": "0/2",
+    "DMARC": "quarantine",
+    "Blacklist": "none",
+    "BIMI": "Erreur lors de la recherche de l'enregistrement BIMI pour agenium.com: The DNS query name does not exist: default._bimi.agenium.com."
+}

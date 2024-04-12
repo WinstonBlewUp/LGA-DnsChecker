@@ -1,0 +1,7 @@
+{
+    "SPF": "2/5",
+    "DKIM": "Pass",
+    "DMARC": "quarantine",
+    "Blacklist": "none",
+    "BIMI": "0/2"
+}
